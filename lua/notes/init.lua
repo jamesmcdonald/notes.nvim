@@ -2,6 +2,7 @@ local M = {}
 
 local defaults = {
   directory = '~/notes',
+  daily_dir = nil,
   file_extension = '.md',
   auto_sync = false,
   register_commands = true,
@@ -57,8 +58,12 @@ M.setup = function(opts)
   end
 
   if M.opts.register_commands then
-    vim.api.nvim_create_user_command('NotesToday', M.open_today_note, {
+    vim.api.nvim_create_user_command('NotesToday', function(args)
+      local arg = args.args
+      M.open_today_note(arg)
+    end, {
       desc = 'Open or create a note for today',
+      nargs = '?',
     })
 
     vim.api.nvim_create_user_command('Notes', M.open_notes_dir, {
@@ -108,11 +113,19 @@ function M.create_note(name)
 
   local filepath = vim.fs.joinpath(notesdir, name .. M.opts.file_extension)
 
+  local parent = vim.fs.dirname(filepath)
+  if vim.fn.isdirectory(parent) == 0 then
+    if vim.fn.mkdir(parent, 'p') == 0 then
+      vim.notify('Failed to create parent directory: ' .. parent, vim.log.levels.ERROR)
+      return nil
+    end
+  end
+
   if vim.fn.filereadable(filepath) == 1 then
     return filepath
   end
 
-  local ok = vim.fn.writefile({ '# ' .. name, '' }, filepath) == 0
+  local ok = vim.fn.writefile({ '# ' .. vim.fs.basename(name), '' }, filepath) == 0
   if ok then
     vim.notify('Note created: ' .. filepath, vim.log.levels.INFO)
     return filepath
@@ -123,8 +136,9 @@ function M.create_note(name)
 end
 
 --- Open the note for today, creating it if it doesn't exist.
-function M.open_today_note()
-  local name = vim.fn.strftime '%Y-%m-%d'
+function M.open_today_note(subdir)
+  subdir = subdir or M.opts.daily_dir or ''
+  local name = vim.fs.joinpath(subdir, vim.fn.strftime '%Y-%m-%d')
   local path = M.create_note(name)
   if not path then
     return
@@ -150,16 +164,6 @@ function M.open_notes_dir()
   end
 
   vim.cmd('edit ' .. vim.fn.fnameescape(notesdir))
-end
-
--- Git stuff
-
---- Check if the current git repository is dirty (has uncommitted changes).
---- @param cwd string The directory to check. Defaults to the current working directory.
---- @return boolean True if the repository is dirty, false otherwise.
-local function repo_dirty(cwd)
-  local r = vim.system({ 'git', 'status', '--porcelain' }, { cwd = cwd, text = true }):wait()
-  return r.code == 0 and r.stdout ~= ''
 end
 
 --- Sync notes with git, committing and pushing if there are changes.
