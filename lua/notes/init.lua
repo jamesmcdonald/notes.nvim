@@ -1,8 +1,16 @@
 local M = {}
 
 local defaults = {
-  notes_dir = '~/notes',
+  directory = '~/notes',
   file_extension = '.md',
+  auto_sync = false,
+  register_commands = true,
+  map_keys = true,
+  keymaps = {
+    open_today = '<leader>nt',
+    open_notes = '<leader>no',
+    sync_notes = '<leader>ns',
+  },
 }
 
 M.opts = vim.deepcopy(defaults)
@@ -11,12 +19,62 @@ M.setup = function(opts)
   opts = opts or {}
 
   M.opts = vim.tbl_deep_extend('force', {}, defaults, opts)
+
+  if M.opts.auto_sync then
+    vim.api.nvim_create_autocmd('BufWritePost', {
+      callback = function()
+        if M.is_notes_buffer() then
+          M.sync_notes()
+        end
+      end,
+      desc = 'Auto-sync notes on save',
+    })
+  end
+
+  if M.opts.map_keys then
+    local keymaps = M.opts.keymaps
+    if keymaps.open_today then
+      vim.keymap.set('n', keymaps.open_today, M.open_today_note, {
+        desc = 'Open or create a note for today',
+        noremap = true,
+        silent = true,
+      })
+    end
+    if keymaps.open_notes then
+      vim.keymap.set('n', keymaps.open_notes, M.open_notes_dir, {
+        desc = 'Open the notes directory',
+        noremap = true,
+        silent = true,
+      })
+    end
+    if keymaps.sync_notes then
+      vim.keymap.set('n', keymaps.sync_notes, M.sync_notes, {
+        desc = 'Sync notes with git',
+        noremap = true,
+        silent = true,
+      })
+    end
+  end
+
+  if M.opts.register_commands then
+    vim.api.nvim_create_user_command('NotesToday', M.open_today_note, {
+      desc = 'Open or create a note for today',
+    })
+
+    vim.api.nvim_create_user_command('Notes', M.open_notes_dir, {
+      desc = 'Open the notes directory',
+    })
+
+    vim.api.nvim_create_user_command('NotesSync', M.sync_notes, {
+      desc = 'Sync notes with git',
+    })
+  end
 end
 
 --- Return normalized notes path, creating the directory if it doesn't exist.
 --- @return string|nil
-function M.get_notes_dir()
-  local notesdir = vim.fs.normalize(vim.fn.expand(M.opts.notes_dir))
+function M.getdir()
+  local notesdir = vim.fs.normalize(vim.fn.expand(M.opts.directory))
 
   if vim.fn.isdirectory(notesdir) == 0 then
     if vim.fn.mkdir(notesdir, 'p') == 0 then
@@ -28,11 +86,22 @@ function M.get_notes_dir()
   return notesdir
 end
 
+--- Check if the current buffer is a note (i.e., is in the notes directory).
+--- @return boolean
+function M.is_notes_buffer()
+  local notesdir = M.getdir()
+  if not notesdir then
+    return false
+  end
+  local bufname = vim.api.nvim_buf_get_name(0)
+  return bufname:find(notesdir) == 1
+end
+
 --- Create a note with the given name.
 --- @param name string
 --- @return string|nil
 function M.create_note(name)
-  local notesdir = M.get_notes_dir()
+  local notesdir = M.getdir()
   if not notesdir then
     return nil
   end
@@ -66,7 +135,7 @@ end
 --- Open the notes directory in a file explorer or telescope. This currently has wacky UX if you
 --- have Telescope and the directory is empty.
 function M.open_notes_dir()
-  local notesdir = M.get_notes_dir()
+  local notesdir = M.getdir()
   if not notesdir then
     return
   end
@@ -85,12 +154,6 @@ end
 
 -- Git stuff
 
---- Do we have fugitive?
---- @return boolean
-local function has_fugitive()
-  return vim.fn.exists ':Git' == 2
-end
-
 --- Check if the current git repository is dirty (has uncommitted changes).
 --- @param cwd string The directory to check. Defaults to the current working directory.
 --- @return boolean True if the repository is dirty, false otherwise.
@@ -99,55 +162,72 @@ local function repo_dirty(cwd)
   return r.code == 0 and r.stdout ~= ''
 end
 
---- Sync notes with git, committing and pushing if there are changes. This is
---- super simple and will break if you don't have a git repo or you don't have
---- all the necessary settings or you don't have a remote.
+--- Sync notes with git, committing and pushing if there are changes.
 function M.sync_notes()
-  local notesdir = M.get_notes_dir()
+  local notesdir = M.getdir()
   if not notesdir then
     return
   end
+
   local msg = 'notes autocommit: ' .. os.date '%Y-%m-%d %H:%M:%S'
 
-  if not repo_dirty(notesdir) then
-    vim.notify('Notes: nothing to commit', vim.log.levels.INFO)
-    return
+  local function notify(level, text)
+    vim.schedule(function()
+      vim.notify(text, level)
+    end)
   end
 
-  if has_fugitive() and vim.fs.dirname(vim.api.nvim_buf_get_name(0)):find(notesdir, 1, true) then
-    vim.cmd 'Git add -A'
-    vim.cmd('Git commit -m ' .. vim.fn.shellescape(msg))
-    vim.cmd 'Git push'
-    vim.notify('Notes: committed & pushed via Fugitive', vim.log.levels.INFO)
-    return
-  end
-
-  local function run(cmd)
-    local r = vim.system(cmd, { cwd = notesdir }):wait()
-    if r.code ~= 0 then
-      vim.notify('Git failed: ' .. table.concat(cmd, ' '), vim.log.levels.ERROR)
-      return false
+  local function fail(cmd, res, extra)
+    local detail = (res and res.stderr and res.stderr ~= '' and res.stderr) or (res and res.stdout) or ''
+    if extra and extra ~= '' then
+      detail = extra .. (detail ~= '' and ('\n' .. detail) or '')
     end
-    return true
+
+    notify(vim.log.levels.ERROR, ('Git failed (%s): %s'):format(table.concat(cmd, ' '), detail))
   end
 
-  if run { 'git', 'add', '-A' } and run { 'git', 'commit', '-m', msg } and run { 'git', 'push' } then
-    vim.notify('Notes: committed & pushed', vim.log.levels.INFO)
+  local function run(cmd, on_ok)
+    vim.system(cmd, { cwd = notesdir }, function(res)
+      if res.code ~= 0 then
+        fail(cmd, res)
+        return
+      end
+      if on_ok then
+        on_ok(res)
+      end
+    end)
   end
+
+  run({ 'git', 'rev-parse', '--is-inside-work-tree' }, function(res)
+    if not res.stdout:match 'true' then
+      fail({ 'git', 'rev-parse', '--is-inside-work-tree' }, res, 'Not a git repository in ' .. notesdir)
+      return
+    end
+
+    run({ 'git', 'pull', '--rebase', '--autostash' }, function()
+      run({ 'git', 'status', '--porcelain' }, function(st)
+        local dirty = st.stdout ~= ''
+
+        local function push()
+          run({ 'git', 'push' }, function()
+            notify(vim.log.levels.INFO, 'Notes: synced' .. (dirty and ' (pull, commit, push)' or ' (no local changes)'))
+          end)
+        end
+
+        if not dirty then
+          -- still push after rebase — there might be new local commits
+          push()
+          return
+        end
+
+        run({ 'git', 'add', '-A' }, function()
+          run({ 'git', 'commit', '-m', msg }, function()
+            push()
+          end)
+        end)
+      end)
+    end)
+  end)
 end
-
--- Inject commands TODO: investigate if these would be happier behind the setup function
-
-vim.api.nvim_create_user_command('NotesToday', M.open_today_note, {
-  desc = 'Open or create a note for today',
-})
-
-vim.api.nvim_create_user_command('Notes', M.open_notes_dir, {
-  desc = 'Open the notes directory',
-})
-
-vim.api.nvim_create_user_command('NotesSync', M.sync_notes, {
-  desc = 'Sync notes with git',
-})
 
 return M
