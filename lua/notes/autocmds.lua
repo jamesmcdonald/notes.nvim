@@ -39,6 +39,14 @@ function M.apply()
       end,
     })
   end
+
+  vim.api.nvim_create_autocmd('VimLeavePre', {
+    group = GROUP,
+    desc = 'Wait for running git jobs on exit',
+    callback = function()
+      require('notes.git').quit_guard()
+    end,
+  })
 end
 
 return M

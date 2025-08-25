@@ -28,8 +28,8 @@ local function finish(do_checktime)
   state.last_pull_ms = now_ms()
   state.state = 'idle'
   if state.pending_sync then
-    state.pending_sync = false
     vim.schedule(function()
+      state.pending_sync = false
       M.sync_notes()
     end)
   end
@@ -176,6 +176,25 @@ function M.sync_notes()
       end)
     end)
   end)
+end
+
+--- Guard to avoid quitting while a git operation is in progress.
+function M.quit_guard()
+  local ms = 10000
+
+  vim.notify('Notes: waiting for git to finish', vim.log.levels.INFO)
+  vim.wait(ms, function()
+    return state.state == 'idle' and not state.pending_sync
+  end, 100)
+
+  if state.pending_sync then
+    state.pending_sync = false
+    vim.notify('Notes: running pending sync before quit', vim.log.levels.INFO)
+    M.sync_notes()
+    vim.wait(ms, function()
+      return state.state == 'idle'
+    end, 100)
+  end
 end
 
 return M
