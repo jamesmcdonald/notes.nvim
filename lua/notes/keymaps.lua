@@ -25,6 +25,13 @@ function M.apply()
       silent = true,
     })
   end
+  if keymaps.grep_notes then
+    vim.keymap.set('n', keymaps.grep_notes, Note.grep_notes, {
+      desc = 'Grep notes with Telescope',
+      noremap = true,
+      silent = true,
+    })
+  end
   if keymaps.sync_notes then
     vim.keymap.set('n', keymaps.sync_notes, Git.sync_notes, {
       desc = 'Sync notes with git',

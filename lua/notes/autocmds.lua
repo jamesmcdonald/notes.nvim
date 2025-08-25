@@ -18,6 +18,26 @@ function M.apply()
         end
       end,
     })
+
+    vim.api.nvim_create_autocmd('BufEnter', {
+      group = GROUP,
+      desc = 'Pull changes on enter',
+      callback = function()
+        if Paths.is_notes_buffer() then
+          Git.pull()
+        end
+      end,
+    })
+
+    vim.api.nvim_create_autocmd('FocusGained', {
+      group = GROUP,
+      desc = 'Pull changes on focus',
+      callback = function()
+        if Paths.is_notes_buffer() then
+          Git.pull()
+        end
+      end,
+    })
   end
 end
 

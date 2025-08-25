@@ -10,6 +10,7 @@ local defaults = {
   keymaps = {
     open_today = '<leader>nt',
     open_notes = '<leader>no',
+    grep_notes = '<leader>ng',
     sync_notes = '<leader>ns',
   },
 }

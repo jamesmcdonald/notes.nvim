@@ -1,33 +1,57 @@
 local Paths = require 'notes.paths'
 
+local state = {
+  state = 'idle', -- 'idle', 'pulling', 'syncing'
+  pending_sync = false,
+  last_pull_ms = 0,
+  debounce_pull_ms = 10 * 1000,
+}
+
 local M = {}
----
---- Sync notes with git, committing and pushing if there are changes.
-function M.sync_notes()
+
+local function notify(level, text)
+  vim.schedule(function()
+    vim.notify(text, level)
+  end)
+end
+
+local function now_ms()
+  return vim.uv.now()
+end
+
+local function finish(do_checktime)
+  if do_checktime then
+    vim.schedule(function()
+      vim.cmd.checktime()
+    end)
+  end
+  state.last_pull_ms = now_ms()
+  state.state = 'idle'
+  if state.pending_sync then
+    state.pending_sync = false
+    vim.schedule(function()
+      M.sync_notes()
+    end)
+  end
+end
+
+local function fail(cmd, res)
+  local detail = (res and res.stderr and res.stderr ~= '' and res.stderr) or (res and res.stdout) or ''
+
+  notify(vim.log.levels.ERROR, ('Git failed (%s): %s'):format(table.concat(cmd, ' '), detail))
+  finish(false)
+end
+
+local function run(cmd, on_ok)
   local notesdir = Paths.getdir()
   if not notesdir then
     return
   end
 
-  local msg = 'notes autocommit: ' .. os.date '%Y-%m-%d %H:%M:%S'
-
-  local function notify(level, text)
-    vim.schedule(function()
-      vim.notify(text, level)
-    end)
-  end
-
-  local function fail(cmd, res, extra)
-    local detail = (res and res.stderr and res.stderr ~= '' and res.stderr) or (res and res.stdout) or ''
-    if extra and extra ~= '' then
-      detail = extra .. (detail ~= '' and ('\n' .. detail) or '')
-    end
-
-    notify(vim.log.levels.ERROR, ('Git failed (%s): %s'):format(table.concat(cmd, ' '), detail))
-  end
-
-  local function run(cmd, on_ok)
-    vim.system(cmd, { cwd = notesdir }, function(res)
+  vim.system(
+    cmd,
+    { cwd = notesdir, text = true, env = { GIT_TERMINAL_PROMPT = '0', GIT_SSH_COMMAND = 'ssh -o BatchMode=yes' } },
+    function(res)
       if res.code ~= 0 then
         fail(cmd, res)
         return
@@ -35,22 +59,106 @@ function M.sync_notes()
       if on_ok then
         on_ok(res)
       end
-    end)
+    end
+  )
+end
+
+--- Pull notes from git, debounced to avoid multiple simultaneous pulls.
+function M.pull()
+  if state.state == 'syncing' then
+    return
   end
+  if state.state == 'pulling' then
+    return
+  end
+  if now_ms() - state.last_pull_ms < state.debounce_pull_ms then
+    return
+  end
+
+  state.state = 'pulling'
+  run({ 'git', 'rev-parse', '--is-inside-work-tree' }, function(res)
+    if not res.stdout:match 'true' then
+      fail({ 'git', 'rev-parse', '--is-inside-work-tree' }, res)
+      return
+    end
+    run({ 'git', 'pull', '--rebase', '--autostash', '--quiet' }, function()
+      notify(vim.log.levels.INFO, 'Notes: pulled')
+      finish(true)
+    end)
+  end)
+end
+
+local function push_if_ahead(on_done)
+  run({ 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}' }, function(up)
+    local upstream = vim.trim(up.stdout or '')
+    if upstream == '' then
+      notify(vim.log.levels.WARN, 'Notes: no upstream configured, not pushing')
+      if on_done then
+        on_done(false)
+        return
+      end
+    end
+
+    run({ 'git', 'rev-list', '--left-right', '--count', upstream .. '...HEAD' }, function(count)
+      local _, ahead = count.stdout:match '(%d+)%s+(%d+)'
+      ahead = tonumber(ahead) or 0
+
+      if ahead > 0 then
+        run({ 'git', 'push', '--quiet' }, function()
+          if on_done then
+            on_done(true)
+          end
+        end)
+      else
+        if on_done then
+          on_done(false)
+        end
+      end
+    end)
+  end)
+end
+
+--- Sync notes with git, committing and pushing if there are changes.
+function M.sync_notes()
+  if state.state == 'syncing' then
+    return
+  end
+  if state.state == 'pulling' then
+    state.pending_sync = true
+    return
+  end
+
+  local msg = 'notes autocommit: ' .. os.date '%Y-%m-%d %H:%M:%S'
+
+  state.state = 'syncing'
 
   run({ 'git', 'rev-parse', '--is-inside-work-tree' }, function(res)
     if not res.stdout:match 'true' then
-      fail({ 'git', 'rev-parse', '--is-inside-work-tree' }, res, 'Not a git repository in ' .. notesdir)
+      fail({ 'git', 'rev-parse', '--is-inside-work-tree' }, res)
       return
     end
 
-    run({ 'git', 'pull', '--rebase', '--autostash' }, function()
+    run({ 'git', 'pull', '--rebase', '--autostash', '--quiet' }, function()
+      vim.schedule(function()
+        vim.cmd.checktime()
+      end)
       run({ 'git', 'status', '--porcelain' }, function(st)
         local dirty = st.stdout ~= ''
 
         local function push()
-          run({ 'git', 'push' }, function()
-            notify(vim.log.levels.INFO, 'Notes: synced' .. (dirty and ' (pull, commit, push)' or ' (no local changes)'))
+          push_if_ahead(function(pushed)
+            if pushed then
+              notify(
+                vim.log.levels.INFO,
+                dirty and 'Notes: synced (pull, commit, push)' or 'Notes: synced (pull, push)'
+              )
+            else
+              notify(
+                vim.log.levels.INFO,
+                dirty and 'Notes: synced (pull, commit; no push)' or 'Notes: synced (pull only)'
+              )
+            end
+            finish(false)
           end)
         end
 

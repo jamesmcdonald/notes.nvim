@@ -69,4 +69,20 @@ function M.open_notes_dir()
   vim.cmd('edit ' .. vim.fn.fnameescape(notesdir))
 end
 
+function M.grep_notes()
+  local notesdir = Paths.getdir()
+  if not notesdir then
+    return
+  end
+  local ok, telescope = pcall(require, 'telescope.builtin')
+  if ok then
+    telescope.live_grep {
+      prompt_title = 'Grep Notes',
+      cwd = notesdir,
+    }
+    return
+  end
+  vim.notify('Telescope not found', vim.log.levels.ERROR)
+end
+
 return M
