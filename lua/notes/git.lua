@@ -180,7 +180,8 @@ end
 
 --- Guard to avoid quitting while a git operation is in progress.
 function M.quit_guard()
-  local ms = 10000
+  local cfg = require('notes.config').get()
+  local ms = (cfg.quit_delay_seconds or 10) * 1000
 
   vim.notify('Notes: waiting for git to finish', vim.log.levels.INFO)
   vim.wait(ms, function()

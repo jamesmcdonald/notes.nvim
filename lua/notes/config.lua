@@ -13,6 +13,7 @@ local defaults = {
     grep_notes = '<leader>ng',
     sync_notes = '<leader>ns',
   },
+  quit_delay_seconds = 10, -- seconds
 }
 
 M.opts = vim.deepcopy(defaults)
