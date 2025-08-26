@@ -23,18 +23,16 @@ function M.create_note(name)
     end
   end
 
+  vim.cmd('edit ' .. vim.fn.fnameescape(filepath))
   if vim.fn.filereadable(filepath) == 1 then
     return filepath
   end
 
-  local ok = vim.fn.writefile({ '# ' .. vim.fs.basename(name), '' }, filepath) == 0
-  if ok then
-    vim.notify('Note created: ' .. filepath, vim.log.levels.INFO)
-    return filepath
-  else
-    vim.notify('Failed to create note: ' .. filepath, vim.log.levels.ERROR)
-    return nil
-  end
+  local bufnr = vim.api.nvim_get_current_buf()
+
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. name, '', '' })
+  vim.notify('New note: ' .. filepath, vim.log.levels.INFO)
+  return filepath
 end
 
 --- Open the note for today, creating it if it doesn't exist.
@@ -42,11 +40,7 @@ function M.open_today_note(subdir)
   local cfg = Config.get()
   subdir = subdir or cfg.daily_dir or ''
   local name = vim.fs.joinpath(subdir, vim.fn.strftime '%Y-%m-%d')
-  local path = M.create_note(name)
-  if not path then
-    return
-  end
-  vim.cmd('edit ' .. vim.fn.fnameescape(path))
+  M.create_note(name)
 end
 
 --- Open the notes directory in a file explorer or telescope. This currently has wacky UX if you
