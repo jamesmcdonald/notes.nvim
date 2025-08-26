@@ -2,11 +2,11 @@ local Config = require 'notes.config'
 local Paths = require 'notes.paths'
 
 local M = {}
----
---- Create a note with the given name.
+
+--- Open a note with the given name.
 --- @param name string
 --- @return string|nil
-function M.create_note(name)
+function M.open(name)
   local notesdir = Paths.getdir()
   if not notesdir then
     return nil
@@ -14,7 +14,10 @@ function M.create_note(name)
   local cfg = Config.get()
 
   local filepath = vim.fs.joinpath(notesdir, name .. cfg.file_extension)
+  return M.open_absolute(filepath)
+end
 
+function M.open_absolute(filepath)
   local parent = vim.fs.dirname(filepath)
   if vim.fn.isdirectory(parent) == 0 then
     if vim.fn.mkdir(parent, 'p') == 0 then
@@ -29,18 +32,54 @@ function M.create_note(name)
   end
 
   local bufnr = vim.api.nvim_get_current_buf()
+  local name = vim.fs.basename(filepath)
+  name = name:gsub('%..*$', '')
 
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. vim.fs.basename(name), '', '' })
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. name, '', '' })
+  vim.api.nvim_set_option_value('modified', false, { buf = bufnr })
+  vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(bufnr), 0 })
   vim.notify('New note: ' .. filepath, vim.log.levels.INFO)
   return filepath
 end
 
---- Open the note for today, creating it if it doesn't exist.
-function M.open_today_note(subdir)
+--- Open the note for today
+function M.daily_open_today(subdir)
   local cfg = Config.get()
   subdir = subdir or cfg.daily_dir or ''
   local name = vim.fs.joinpath(subdir, vim.fn.strftime '%Y-%m-%d')
-  M.create_note(name)
+  M.open(name)
+end
+
+function M.daily_open_adjacent(forward)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local bufname = vim.api.nvim_buf_get_name(bufnr)
+  local dirname = vim.fs.dirname(bufname)
+  local basename = vim.fs.basename(bufname)
+  -- Match a date in the basename, and save everything that comes after it
+  local _, _, suffix = string.find(basename, '^%d%d%d%d%-%d%d%-%d%d(.*)$')
+  local date = vim.fn.strptime('%Y-%m-%d', basename)
+  if date == 0 then
+    vim.notify('Current buffer is not a date-named note', vim.log.levels.ERROR)
+    return
+  end
+  if forward then
+    date = date + 24 * 60 * 60
+  else
+    date = date - 24 * 60 * 60
+  end
+  local name = vim.fs.joinpath(dirname, vim.fn.strftime('%Y-%m-%d', date)) .. suffix
+
+  M.open_absolute(name)
+end
+
+--- Open yesterday's note from a date-named file in the same directory
+function M.daily_open_yesterday()
+  M.daily_open_adjacent(false)
+end
+
+--- Open tomorrow's note
+function M.daily_open_tomorrow()
+  M.daily_open_adjacent(true)
 end
 
 --- Open the notes directory in a file explorer or telescope. This currently has wacky UX if you

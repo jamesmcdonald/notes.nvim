@@ -12,8 +12,22 @@ function M.apply()
 
   local keymaps = cfg.keymaps
   if keymaps.open_today then
-    vim.keymap.set('n', keymaps.open_today, Note.open_today_note, {
+    vim.keymap.set('n', keymaps.open_today, Note.daily_open_today, {
       desc = 'Open or create a note for today',
+      noremap = true,
+      silent = true,
+    })
+  end
+  if keymaps.open_yesterday then
+    vim.keymap.set('n', keymaps.open_yesterday, Note.daily_open_yesterday, {
+      desc = "Open yesterday's note (from a dated file)",
+      noremap = true,
+      silent = true,
+    })
+  end
+  if keymaps.open_tomorrow then
+    vim.keymap.set('n', keymaps.open_tomorrow, Note.daily_open_tomorrow, {
+      desc = "Open tomorrow's note (from a dated file)",
       noremap = true,
       silent = true,
     })

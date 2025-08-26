@@ -12,7 +12,7 @@ function M.register()
 
   vim.api.nvim_create_user_command('NotesToday', function(args)
     local arg = args.args
-    Note.open_today_note(arg)
+    Note.daily_open_today(arg)
   end, {
     desc = 'Open or create a note for today',
     nargs = '?',
