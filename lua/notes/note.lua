@@ -30,7 +30,7 @@ function M.create_note(name)
 
   local bufnr = vim.api.nvim_get_current_buf()
 
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. name, '', '' })
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. vim.fs.basename(name), '', '' })
   vim.notify('New note: ' .. filepath, vim.log.levels.INFO)
   return filepath
 end
