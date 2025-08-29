@@ -1,17 +1,14 @@
-local Config = require 'notes.config'
-local Paths = require 'notes.paths'
-
 local M = {}
 
 --- Open a note with the given name.
 --- @param name string
 --- @return string|nil
 function M.open(name)
-  local notesdir = Paths.getdir()
+  local notesdir = require('notes.paths').getdir()
   if not notesdir then
     return nil
   end
-  local cfg = Config.get()
+  local cfg = require('notes.config').get()
 
   local filepath = vim.fs.joinpath(notesdir, name .. cfg.file_extension)
   return M.open_absolute(filepath)
@@ -44,7 +41,7 @@ end
 
 --- Open the note for today
 function M.daily_open_today(subdir)
-  local cfg = Config.get()
+  local cfg = require('notes.config').get()
   subdir = subdir or cfg.daily_dir or ''
   local name = vim.fs.joinpath(subdir, vim.fn.strftime '%Y-%m-%d')
   M.open(name)
@@ -85,7 +82,7 @@ end
 --- Open the notes directory in a file explorer or telescope. This currently has wacky UX if you
 --- have Telescope and the directory is empty.
 function M.open_notes_dir()
-  local notesdir = Paths.getdir()
+  local notesdir = require('notes.paths').getdir()
   if not notesdir then
     return
   end
@@ -103,7 +100,7 @@ function M.open_notes_dir()
 end
 
 function M.grep_notes()
-  local notesdir = Paths.getdir()
+  local notesdir = require('notes.paths').getdir()
   if not notesdir then
     return
   end

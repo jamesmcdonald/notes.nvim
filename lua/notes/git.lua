@@ -1,5 +1,3 @@
-local Paths = require 'notes.paths'
-
 local state = {
   state = 'idle', -- 'idle', 'pulling', 'syncing'
   pending_sync = false,
@@ -43,7 +41,7 @@ local function fail(cmd, res)
 end
 
 local function run(cmd, on_ok)
-  local notesdir = Paths.getdir()
+  local notesdir = require('notes.paths').getdir()
   if not notesdir then
     return
   end

@@ -1,17 +1,11 @@
-local Config = require 'notes.config'
-local Autocmds = require 'notes.autocmds'
-local Commands = require 'notes.commands'
-local Keymaps = require 'notes.keymaps'
-local Paths = require 'notes.paths'
-
 local M = {}
 
 function M.setup(opts)
-  Paths._resolve_dir()
-  Config.set(opts)
-  Autocmds.apply()
-  Commands.register()
-  Keymaps.apply()
+  require('notes.paths')._resolve_dir()
+  require('notes.config').set(opts)
+  require('notes.autocmds').apply()
+  require('notes.commands').register()
+  require('notes.keymaps').apply()
 end
 
 M.open_today_note = require('notes.note').daily_open_today

@@ -1,28 +1,24 @@
-local Config = require 'notes.config'
-local Note = require 'notes.note'
-local Git = require 'notes.git'
-
 local M = {}
 
 function M.register()
-  local cfg = Config.get()
+  local cfg = require('notes.config').get()
   if not cfg.register_commands then
     return
   end
 
   vim.api.nvim_create_user_command('NotesToday', function(args)
     local arg = args.args
-    Note.daily_open_today(arg)
+    require('notes.note').daily_open_today(arg)
   end, {
     desc = 'Open or create a note for today',
     nargs = '?',
   })
 
-  vim.api.nvim_create_user_command('Notes', Note.open_notes_dir, {
+  vim.api.nvim_create_user_command('Notes', require('notes.note').open_notes_dir, {
     desc = 'Open the notes directory',
   })
 
-  vim.api.nvim_create_user_command('NotesSync', Git.sync_notes, {
+  vim.api.nvim_create_user_command('NotesSync', require('notes.git').sync_notes, {
     desc = 'Sync notes with git',
   })
 end
