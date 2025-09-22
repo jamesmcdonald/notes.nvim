@@ -52,9 +52,9 @@ function M.daily_open_adjacent(forward)
   local bufname = vim.api.nvim_buf_get_name(bufnr)
   local dirname = vim.fs.dirname(bufname)
   local basename = vim.fs.basename(bufname)
-  -- Match a date in the basename, and save everything that comes after it
-  local _, _, suffix = string.find(basename, '^%d%d%d%d%-%d%d%-%d%d(.*)$')
-  local date = vim.fn.strptime('%Y-%m-%d', basename)
+  -- Match a date in the basename, and save everything that comes around it
+  local _, _, prefix, datebit, suffix = string.find(basename, '^(.*)(%d%d%d%d%-%d%d%-%d%d)(.*)$')
+  local date = vim.fn.strptime('%Y-%m-%d', datebit)
   if date == 0 then
     vim.notify('Current buffer is not a date-named note', vim.log.levels.ERROR)
     return
@@ -64,7 +64,7 @@ function M.daily_open_adjacent(forward)
   else
     date = date - 24 * 60 * 60
   end
-  local name = vim.fs.joinpath(dirname, vim.fn.strftime('%Y-%m-%d', date)) .. suffix
+  local name = vim.fs.joinpath(dirname, prefix .. vim.fn.strftime('%Y-%m-%d', date)) .. suffix
 
   M.open_absolute(name)
 end
