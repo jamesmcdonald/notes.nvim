@@ -32,7 +32,7 @@ function M.open_absolute(filepath)
   local name = vim.fs.basename(filepath)
   name = name:gsub('%..*$', '')
 
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. name, '', '' })
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '# ' .. name, '' })
   vim.api.nvim_set_option_value('modified', false, { buf = bufnr })
   vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(bufnr), 0 })
   vim.notify('New note: ' .. filepath, vim.log.levels.INFO)
