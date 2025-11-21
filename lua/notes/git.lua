@@ -181,6 +181,10 @@ function M.quit_guard()
   local cfg = require('notes.config').get()
   local ms = (cfg.quit_delay_seconds or 10) * 1000
 
+  if state.state == 'idle' and not state.pending_sync then
+    return
+  end
+
   vim.notify('Notes: waiting for git to finish', vim.log.levels.INFO)
   vim.wait(ms, function()
     return state.state == 'idle' and not state.pending_sync
