@@ -49,6 +49,24 @@ function M.apply()
       silent = true,
     })
   end
+  if keymaps.capture then
+    vim.keymap.set('n', keymaps.capture, function()
+      vim.ui.input({ prompt = 'Capture: ' }, function(input)
+        if input and input ~= '' then
+          require('notes.note').capture(input)
+        end
+      end)
+    end, {
+      desc = "Capture text to today's note",
+      noremap = true,
+      silent = true,
+    })
+    vim.keymap.set('v', keymaps.capture, ":'<,'>NotesCapture<CR>", {
+      desc = "Capture selected text to today's note",
+      noremap = true,
+      silent = true,
+    })
+  end
 end
 
 return M

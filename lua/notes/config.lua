@@ -2,7 +2,8 @@ local M = {}
 
 local defaults = {
   directory = '~/notes',
-  daily_dir = nil,
+  daily_dir = nil, -- deprecated: use paths instead
+  paths = {}, -- subdirectories of directory to manage as note contexts
   file_extension = '.md',
   auto_sync = false,
   register_commands = true,
@@ -14,6 +15,7 @@ local defaults = {
     open_notes = '<leader>no',
     grep_notes = '<leader>ng',
     sync_notes = '<leader>ns',
+    capture = '<leader>nc',
   },
   quit_delay_seconds = 10,
 }
