@@ -36,6 +36,14 @@ end
 local function fail(cmd, res)
   local detail = (res and res.stderr and res.stderr ~= '' and res.stderr) or (res and res.stdout) or ''
 
+  if detail:match 'not a git repository' then
+    if state.state ~= 'pulling' then
+      notify(vim.log.levels.WARN, 'Notes: directory is not a git repository')
+    end
+    finish(false)
+    return
+  end
+
   notify(vim.log.levels.ERROR, ('Git failed (%s): %s'):format(table.concat(cmd, ' '), detail))
   finish(false)
 end
