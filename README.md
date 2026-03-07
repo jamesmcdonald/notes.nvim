@@ -3,8 +3,14 @@
 Personal notes for Neovim: daily notes, a simple “open notes” picker, and a tiny
 but fairly robust Git sync engine (pull → optional commit → conditional push).
 
-- **Daily notes**: `:NotesToday` creates/opens `YYYY-MM-DD.md` (optionally inside a subdir).
-- **Browse notes**: `:Notes` opens your notes directory (uses Telescope if present).
+- **Daily notes**: `:NotesToday` creates/opens `YYYY-MM-DD.md` in the active notes path.
+- **Multi-path**: configure multiple note contexts (work, personal, etc.) via `paths`; the active
+  path follows your current buffer.
+- **Capture**: `:NotesCapture` appends a timestamped entry to today's note without opening it.
+- **Browse notes**: `:Notes` opens your active notes path (uses Telescope if present).
+- **Grep notes**: `<leader>ng` searches notes with Telescope `live_grep`.
+- **Templates**: place `_template.md` in a notes subdir; new notes in that dir use it (supports
+  `{{date}}`, `{{time}}`, `{{name}}`).
 - **Git sync**: `:NotesSync` runs `git pull --rebase --autostash`, then commits/pushes if needed.
 - **Background pull**: when you open a note (and when focus returns), a debounced background
   `git pull` runs and the buffer is auto-reloaded if files changed.
@@ -44,17 +50,23 @@ These are the defaults as implemented:
 
 ```lua
 {
-  directory = "~/notes",   -- where notes live (created if missing)
-  daily_dir = nil,         -- optional subdir for today's notes (e.g. "journal"); nil/"" for none
+  directory = "~/notes",   -- where notes live (git repo root; created if missing)
+  paths = {},              -- subdirs to manage as note contexts (e.g. {"journal", "work"})
+  -- daily_dir = nil,      -- deprecated: use paths = {"subdir"} instead
   file_extension = ".md",  -- extension for notes
   auto_sync = false,       -- run :NotesSync automatically on save for notes buffers
   register_commands = true,
   map_keys = true,
   keymaps = {
-    open_today = "<leader>nt",
-    open_notes = "<leader>no",
-    sync_notes = "<leader>ns",
+    open_today     = "<leader>nt",
+    open_yesterday = "<leader>np",
+    open_tomorrow  = "<leader>nn",
+    open_notes     = "<leader>no",
+    grep_notes     = "<leader>ng",
+    sync_notes     = "<leader>ns",
+    capture        = "<leader>nc",
   },
+  quit_delay_seconds = 10,
 }
 ```
 
@@ -62,25 +74,27 @@ These are the defaults as implemented:
 
 **Basic**
 ```lua
-require("notes").setup()
+require(“notes”).setup()
 ```
 
-**Daily notes inside a subfolder + enable autosync**
+**Multiple note contexts (work + journal)**
 ```lua
-require("notes").setup({
-  daily_dir = "journal",
+require(“notes”).setup({
+  paths = { “journal”, “work” },
   auto_sync = true,
 })
 ```
+The active path is determined by your current buffer. When no buffer matches, the first path is used.
 
 **Custom keymaps (or disable entirely)**
 ```lua
-require("notes").setup({
+require(“notes”).setup({
   map_keys = true,
   keymaps = {
-    open_today = "<leader>jd", -- “journal: today”
-    open_notes = "<leader>jo",
-    sync_notes = "<leader>js",
+    open_today = “<leader>jd”, -- “journal: today”
+    open_notes = “<leader>jo”,
+    sync_notes = “<leader>js”,
+    capture    = “<leader>jc”,
   },
 })
 ```
@@ -89,23 +103,96 @@ require("notes").setup({
 
 ## Commands
 
-- `:NotesToday [subdir]`  
-  Create/open today’s note `YYYY-MM-DD.md`.
-  - With an argument, uses that **subdir override**: `:NotesToday work` → `work/2025-08-24.md`.
-  - Without an argument, uses `daily_dir` (or none if it’s `nil`/`""`).
+- `:NotesToday [subdir]`
+  Create/open today’s note `YYYY-MM-DD.md` in the active path.
+  - With an argument, uses that **subdir override**: `:NotesToday work` → `work/YYYY-MM-DD.md`.
+  - Without an argument, uses the active path (see [Multi-path](#multi-path)).
 
-- `:Notes`  
-  Open the notes directory. If **telescope.nvim** is installed, uses
-  `telescope.builtin.find_files{ cwd = notesdir }`. Otherwise `:edit` the dir.
+- `:NotesDate YYYY-MM-DD`
+  Create/open a note for a specific date in the active path.
 
-- `:NotesSync`  
+- `:NotesCapture [text]`
+  Append a timestamped bullet to today’s note **without opening it**.
+  - With text: `:NotesCapture buy milk` → appends `- HH:MM buy milk`.
+  - Without text: opens `vim.ui.input` prompt.
+  - In visual mode: captures the selected lines.
+
+- `:Notes`
+  Open the active notes path. If **telescope.nvim** is installed, uses
+  `telescope.builtin.find_files`. Otherwise `:edit` the dir.
+
+- `:NotesSync`
   Git sync for the notes repo (non-blocking):
-  1. `git rev-parse --is-inside-work-tree` (sanity check)  
-  2. `git pull --rebase --autostash`  
-  3. `git status --porcelain` → if dirty: `git add -A && git commit -m "notes autocommit: <timestamp>"`  
+  1. `git rev-parse --is-inside-work-tree` (sanity check)
+  2. `git pull --rebase --autostash`
+  3. `git status --porcelain` → if dirty: `git add -A && git commit -m "notes autocommit: <timestamp>"`
 
 All Git steps run asynchronously via `vim.system` in **non-interactive** mode
 (`GIT_TERMINAL_PROMPT=0`, `GIT_SSH_COMMAND="ssh -o BatchMode=yes"`). Errors surface via `vim.notify`.
+
+---
+
+## Multi-path
+
+The `paths` option lets you manage multiple note contexts (e.g. a personal journal and work notes)
+inside the same `directory` (git repo):
+
+```lua
+require("notes").setup({
+  directory = "~/notes",
+  paths = { "journal", "work" },
+})
+```
+
+- Each entry is a subdirectory of `directory`; it is created on startup if missing.
+- The **active path** is the configured path that contains the current buffer. If no buffer
+  matches, the first path is used.
+- Commands like `:NotesToday`, `:Notes`, and `:NotesCapture` all operate on the active path.
+- `daily_dir` still works for single-subdir setups but is deprecated; prefer `paths = {"subdir"}`.
+
+---
+
+## Capture
+
+`:NotesCapture` appends a timestamped entry to today's note in the active path **without opening**
+the file. Useful for quick thoughts while working in another buffer.
+
+```
+:NotesCapture buy oat milk
+```
+
+Appends `- 14:32 buy oat milk` to `YYYY-MM-DD.md`. Multi-line input (via `vim.ui.input` or visual
+selection) is indented under the timestamp bullet.
+
+If the file doesn't exist yet, a header (`# YYYY-MM-DD`) is written first. If the file is already
+open in a buffer, it is reloaded automatically.
+
+---
+
+## Templates
+
+Place a `_template.md` file inside any notes subdirectory. New notes created in that directory will
+use it as their initial content instead of the default `# <name>` heading.
+
+Supported placeholders:
+
+| Placeholder  | Replaced with            |
+|--------------|--------------------------|
+| `{{date}}`   | Current date `YYYY-MM-DD` |
+| `{{time}}`   | Current time `HH:MM`     |
+| `{{name}}`   | Note filename (no extension) |
+
+Example `_template.md`:
+
+```markdown
+# {{name}}
+
+Date: {{date}}
+Time: {{time}}
+
+---
+
+```
 
 ---
 
@@ -138,15 +225,21 @@ If the timeout is reached, Neovim quits as normal.
 
 If `map_keys = true`, the plugin sets:
 
-- **`<leader>nt`** → open/create today’s note (`:NotesToday`)
-- **`<leader>no`** → open notes directory (`:Notes`)
-- **`<leader>ns`** → sync notes (`:NotesSync`)
+| Key            | Action                                        |
+|----------------|-----------------------------------------------|
+| `<leader>nt`   | Open/create today’s note (`:NotesToday`)      |
+| `<leader>np`   | Open yesterday’s note (from a dated file)     |
+| `<leader>nn`   | Open tomorrow’s note (from a dated file)      |
+| `<leader>no`   | Open notes directory (`:Notes`)               |
+| `<leader>ng`   | Grep notes with Telescope                     |
+| `<leader>ns`   | Sync notes (`:NotesSync`)                     |
+| `<leader>nc`   | Capture to today’s note (normal + visual)     |
 
 You can disable mappings with `map_keys = false` and add your own:
 
 ```lua
 vim.keymap.set("n", "<leader>tw", function()
-  require("notes").open_today_note("work")  -- override subdir
+  require("notes.note").daily_open_today("work")  -- subdir override
 end, { desc = "Today note (work)" })
 ```
 
@@ -158,16 +251,15 @@ end, { desc = "Today note (work)" })
   - `directory` is expanded/normalized on use. If missing, it’s created.  
   - When creating a note, parent directories are created as needed (allows subfolders).
 
-- **File format**  
-  - New notes start with:
-    ```
-    # <basename>
-    ```
-    (e.g. `# 2025-08-24`).
+- **File format**
+  - New notes start with `# <basename>` (e.g. `# 2025-08-24`), unless a `_template.md` exists in
+    the same directory (see [Templates](#templates)).
 
-- **Daily notes**  
-  - `open_today_note(subdir?)` builds `subdir/YYYY-MM-DD` and appends `file_extension`.  
-  - The `:NotesToday` command passes its optional argument to `open_today_note()`.
+- **Daily notes**
+  - `daily_open_today(subdir?)` builds `subdir/YYYY-MM-DD` and appends `file_extension`.
+  - The `:NotesToday` command passes its optional argument to `daily_open_today()`.
+  - Yesterday/tomorrow navigation (`<leader>np`/`<leader>nn`) works on any file whose name
+    contains a `YYYY-MM-DD` date component — not just plain date files.
 
 - **Sync engine**  
   - Serialized: only one Git job runs at a time; a `:NotesSync` requested
@@ -190,15 +282,24 @@ end, { desc = "Today note (work)" })
 You can call these directly:
 
 ```lua
-local notes = require("notes")
+local paths = require("notes.paths")
+local note  = require("notes.note")
+local git   = require("notes.git")
 
-notes.getdir()            -- -> absolute notes dir (ensures it exists)
-notes.is_notes_buffer()   -- -> true/false (is current buffer inside notes dir)
+paths.getdir()             -- -> absolute notes root dir
+paths.get_active_path()    -- -> active notes path (context-aware; falls back to first path)
+paths.is_notes_buffer()    -- -> true/false (is current buffer inside notes root)
 
-notes.create_note("project/idea-1")  -- creates/openable path string or nil
-notes.open_today_note("work")        -- open today’s note (override subdir)
-notes.open_notes_dir()               -- browse notes (Telescope if available)
-notes.sync_notes()                   -- async git sync (pull/commit/conditional push)
+note.open("project/idea-1")          -- open note relative to notes root
+note.daily_open_today("work")        -- open today’s note (optional subdir override)
+note.daily_open_yesterday()          -- open yesterday’s note (from current dated buffer)
+note.daily_open_tomorrow()           -- open tomorrow’s note (from current dated buffer)
+note.open_date("2025-08-24")         -- open note for a specific date in active path
+note.capture("text")                 -- append timestamped entry to today’s note
+note.open_notes_dir()                -- browse active path (Telescope if available)
+note.grep_notes()                    -- grep active path with Telescope live_grep
+
+git.sync_notes()                     -- async git sync (pull/commit/conditional push)
 ```
 
 ---
@@ -207,8 +308,7 @@ notes.sync_notes()                   -- async git sync (pull/commit/conditional 
 
 - File/subdir completion for `:NotesToday` arguments
 - “Open by name” prompt (`vim.ui.input`), with subfolder support
-- Optional templates/frontmatter
-- Configurable debounce/quit time windows
+- Configurable debounce time window
 
 ---
 
