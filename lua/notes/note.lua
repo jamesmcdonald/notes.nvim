@@ -34,7 +34,7 @@ function M.open_absolute(filepath)
   local template_path = vim.fs.joinpath(parent, '_template.md')
   local lines
   if vim.fn.filereadable(template_path) == 1 then
-    local date = vim.fn.strftime '%Y-%m-%d'
+    local date = name:match '%d%d%d%d%-%d%d%-%d%d' or vim.fn.strftime '%Y-%m-%d'
     local time = vim.fn.strftime '%H:%M'
     lines = vim.tbl_map(function(line)
       return (line:gsub('{{date}}', date):gsub('{{time}}', time):gsub('{{name}}', name))
